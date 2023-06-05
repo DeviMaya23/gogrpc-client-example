@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package proto;
+
+option go_package = "./;proto";
+
+import "google/protobuf/empty.proto";
+
+message GetNamedGreetingRequest {
+    string Name = 1;
+}
+
+message GreetingResponse {
+    string Message = 1;
+}
+
+message Game {
+    string Name = 1;
+    string Console = 2;
+}
+
+message GetVerboseGreetingRequest {
+    reserved 3 to 5;
+
+    string Name = 1;
+    int64 Age = 2;
+    repeated Game FavoriteGames = 6;
+
+}
+
+message GetVerboseGreetingResponse {
+    string Message = 1;
+    bool IsOld = 2;
+}
+
+service GreetingService {
+    rpc GetGenericGreeting(google.protobuf.Empty) returns (GreetingResponse);
+    rpc GetNamedGreeting(GetNamedGreetingRequest) returns (GreetingResponse);
+    rpc GetVerboseGreeting (GetVerboseGreetingRequest) returns (GetVerboseGreetingResponse);
+
+}
