@@ -1,67 +1,51 @@
 package main
 
 import (
-	"context"
-	"fmt"
+	"flag"
+	"go-grpc-client/domain"
 	"go-grpc-client/shared/proto"
 	"log"
 	"net/http"
-	"time"
 
 	"github.com/labstack/echo/v4"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 var GRPCClient proto.GreetingServiceClient
 
-type Response struct {
-	Code     int
-	GRPCCode int
-	Message  string
-	Data     interface{}
-}
-
-func OpenServiceClient() (*grpc.ClientConn, error) {
-	host := "localhost"
-	port := 50052
-	timeout := 30000
-	ctx, _ := context.WithTimeout(
-		context.Background(),
-		time.Duration(timeout)*time.Millisecond,
-	)
-	opts := []grpc.DialOption{}
-	opts = append(opts, grpc.WithInsecure())
-
-	// opts = append(opts, grpc.WithUnaryInterceptor(clientInterceptor))
-
-	opts = append(opts, grpc.WithDefaultServiceConfig(`{"loadBalancingPolicy":"round_robin"}`))
-	conn, err := grpc.DialContext(
-		ctx,
-		fmt.Sprintf("%s:%d", host, port),
-		opts...,
-	)
-	if err != nil {
-		return nil, err
-	}
-	return conn, nil
-}
+var (
+	tls        = flag.Bool("tls", false, "Connection uses TLS if true, else plain TCP")
+	serverAddr = flag.String("addr", "localhost:50051", "The server address in the format of host:port")
+)
 
 func main() {
 
-	grpcClient, err := OpenServiceClient()
+	flag.Parse()
+	var opts []grpc.DialOption
+	if *tls {
+		// TODO TLS example
+		// opts = append(opts, grpc.WithTransportCredentials(creds))
+	} else {
+		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	}
+
+	// Create connection to Go GRPC (GRPC Server)
+	conn, err := grpc.Dial(*serverAddr, opts...)
 	if err != nil {
 		log.Fatalf("Unable to connect to GRPC Server : %s ", err.Error())
 	}
-	GRPCClient = proto.NewGreetingServiceClient(grpcClient)
+
+	// Create Service Client
+	GRPCClient = proto.NewGreetingServiceClient(conn)
 
 	e := echo.New()
-	e.GET("/", func(c echo.Context) error {
-		return c.String(http.StatusOK, "Hello, World!")
-	})
-
-	e.GET("/generic", GetGenericGreeting)
+	// Greeting
+	e.GET("/greeting/generic", GetGenericGreeting)
+	e.GET("/greeting/named", GetNamedGreeting)
+	e.POST("/greeting/verbose", GetVerboseGreeting)
 
 	e.Logger.Fatal(e.Start(":1323"))
 }
@@ -73,14 +57,69 @@ func GetGenericGreeting(c echo.Context) error {
 	if err != nil {
 		st, _ := status.FromError(err)
 
-		return c.JSON(http.StatusBadRequest, Response{
+		return c.JSON(http.StatusBadRequest, domain.Response{
 			Code:     http.StatusBadRequest,
 			GRPCCode: int(st.Code()),
 			Message:  st.Message(),
 		})
 	}
 
-	return c.JSON(http.StatusOK, Response{
+	return c.JSON(http.StatusOK, domain.Response{
+		Code:     http.StatusOK,
+		GRPCCode: 0,
+		Message:  resp.Message,
+	})
+}
+
+func GetNamedGreeting(c echo.Context) error {
+
+	name := c.QueryParam("name")
+	resp, err := GRPCClient.GetNamedGreeting(c.Request().Context(), &proto.GetNamedGreetingRequest{Name: name})
+
+	if err != nil {
+		st, _ := status.FromError(err)
+
+		return c.JSON(http.StatusBadRequest, domain.Response{
+			Code:     http.StatusBadRequest,
+			GRPCCode: int(st.Code()),
+			Message:  st.Message(),
+		})
+	}
+
+	return c.JSON(http.StatusOK, domain.Response{
+		Code:     http.StatusOK,
+		GRPCCode: 0,
+		Message:  resp.Message,
+	})
+}
+
+func GetVerboseGreeting(c echo.Context) error {
+
+	req := new(domain.VerboseGreetingRequest)
+	if err := c.Bind(req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+
+	reqProto := &proto.GetVerboseGreetingRequest{Name: req.Name,
+		Age: int64(req.Age),
+		FavoriteGame: &proto.Game{
+			Name:    req.FavoriteGame.Name,
+			Console: req.FavoriteGame.Console,
+		}}
+
+	resp, err := GRPCClient.GetVerboseGreeting(c.Request().Context(), reqProto)
+
+	if err != nil {
+		st, _ := status.FromError(err)
+
+		return c.JSON(http.StatusBadRequest, domain.Response{
+			Code:     http.StatusBadRequest,
+			GRPCCode: int(st.Code()),
+			Message:  st.Message(),
+		})
+	}
+
+	return c.JSON(http.StatusOK, domain.Response{
 		Code:     http.StatusOK,
 		GRPCCode: 0,
 		Message:  resp.Message,

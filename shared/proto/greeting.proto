@@ -24,7 +24,7 @@ message GetVerboseGreetingRequest {
 
     string Name = 1;
     int64 Age = 2;
-    repeated Game FavoriteGames = 6;
+    Game FavoriteGame = 6;
 
 }
 
