@@ -11,11 +11,26 @@ message Villager {
     string Personality = 2;
 }
 
+message FindByNameRequest {
+    string Name = 1;
+}
+
 message FindAllResponse {
+    repeated Villager Villagers = 1;
+}
+
+message FindStreamClientSideRequest {
+    string Name = 1;
+}
+
+message FindStreamClientSideResponse {
     repeated Villager Villagers = 1;
 }
 
 service VillagersService {
     rpc FindAll (google.protobuf.Empty) returns (FindAllResponse); // unary
-    rpc FindAllStream (google.protobuf.Empty) returns (stream Villager); // server-side stream
+    rpc FindByName (FindByNameRequest) returns (Villager); // unary
+    rpc FindAllStreamServerSide (google.protobuf.Empty) returns (stream Villager); // server-side stream
+    rpc FindStreamClientSide (stream FindStreamClientSideRequest) returns (FindAllResponse); // client-side stream
+    rpc FindStreamBidirecitonal (stream FindStreamClientSideRequest) returns (stream Villager); // bidirectional stream
 }
