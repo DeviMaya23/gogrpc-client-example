@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package proto;
+
+option go_package = "./;proto";
+
+import "google/protobuf/empty.proto";
+
+message Villager {
+    string Name = 1;
+    string Personality = 2;
+}
+
+message FindAllResponse {
+    repeated Villager Villagers = 1;
+}
+
+service VillagersService {
+    rpc FindAll (google.protobuf.Empty) returns (FindAllResponse); // unary
+    rpc FindAllStream (google.protobuf.Empty) returns (stream Villager); // server-side stream
+}
