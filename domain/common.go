@@ -17,3 +17,12 @@ type Game struct {
 	Name    string `json:"name"`
 	Console string `json:"console"`
 }
+
+type Villager struct {
+	Name        string `json:"name"`
+	Personality string `json:"personality"`
+}
+
+type FindStreamClientSideRequest struct {
+	Name []string `json:"name"`
+}

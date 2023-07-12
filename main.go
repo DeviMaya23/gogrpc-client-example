@@ -1,11 +1,15 @@
 package main
 
 import (
+	"context"
 	"flag"
+	"fmt"
 	"go-grpc-client/domain"
 	"go-grpc-client/shared/proto"
+	"io"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/labstack/echo/v4"
 	"google.golang.org/grpc"
@@ -51,6 +55,9 @@ func main() {
 	e.POST("/greeting/verbose", GetVerboseGreeting)
 
 	e.GET("/villagers/:Name", GetVillagerByName)
+	e.GET("/villagers/serverstream", FindAllStreamServerSide)
+	e.POST("/villagers/clientstream", FindStreamClientSide)
+	e.POST("/villagers/bidirectionalstream", FindStreamBidirectional)
 
 	e.Logger.Fatal(e.Start(":1323"))
 }
@@ -162,4 +169,132 @@ func GetVillagerByName(c echo.Context) error {
 		GRPCCode: 0,
 		Data:     resp,
 	})
+}
+
+func FindAllStreamServerSide(c echo.Context) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
+	defer cancel()
+	stream, err := VillagersGRPCClient.FindAllStreamServerSide(ctx, &emptypb.Empty{})
+	if err != nil {
+		log.Fatalf("client.FindAllStreamServerSide failed: %v", err)
+	}
+
+	villagerList := make([]domain.Villager, 0)
+	for {
+		villager, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			log.Fatalf("client.FindAllStreamServerSide failed: %v", err)
+		}
+		villagerList = append(villagerList, domain.Villager{
+			Name:        villager.Name,
+			Personality: villager.Personality,
+		})
+	}
+
+	return c.JSON(http.StatusOK, domain.Response{
+		Code:     http.StatusOK,
+		GRPCCode: 0,
+		Data:     villagerList,
+	})
+
+}
+
+func FindStreamClientSide(c echo.Context) error {
+
+	req := new(domain.FindStreamClientSideRequest)
+	if err := c.Bind(req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
+	defer cancel()
+
+	stream, err := VillagersGRPCClient.FindStreamClientSide(ctx)
+	if err != nil {
+		log.Fatalf("client.FindStreamClientSide failed: %v", err)
+	}
+
+	for _, name := range req.Name {
+		reqProto := proto.FindStreamClientSideRequest{
+			Name: name,
+		}
+		if err := stream.Send(&reqProto); err != nil {
+			log.Fatalf("client.FindStreamClientSide: stream.Send(%v) failed: %v", &reqProto, err)
+		}
+
+	}
+
+	reply, err := stream.CloseAndRecv()
+	if err != nil {
+		log.Fatalf("client.FindStreamClientSide failed: %v", err)
+	}
+
+	return c.JSON(http.StatusOK, domain.Response{
+		Code:     http.StatusOK,
+		GRPCCode: 0,
+		Data:     reply,
+	})
+
+}
+
+func FindStreamBidirectional(c echo.Context) error {
+
+	req := new(domain.FindStreamClientSideRequest)
+	if err := c.Bind(req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
+	defer cancel()
+
+	stream, err := VillagersGRPCClient.FindStreamBidirecitonal(ctx)
+	if err != nil {
+		log.Fatalf("client.FindStreamBidirecitonal failed: %v", err)
+	}
+
+	villagerList := make([]domain.Villager, 0)
+
+	waitc := make(chan struct{})
+
+	go func() {
+		for {
+			in, err := stream.Recv()
+			if err == io.EOF {
+				// read done.
+				close(waitc)
+				return
+			}
+			if err != nil {
+				log.Fatalf("client.FindStreamBidirecitonal failed: %v", err)
+			}
+			newVillager := domain.Villager{
+				Name:        in.Name,
+				Personality: in.Personality,
+			}
+			fmt.Println("Received : ")
+			fmt.Println(newVillager)
+			villagerList = append(villagerList, newVillager)
+		}
+	}()
+
+	for _, name := range req.Name {
+		reqProto := proto.FindStreamClientSideRequest{
+			Name: name,
+		}
+		if err := stream.Send(&reqProto); err != nil {
+			log.Fatalf("client.FindStreamBidirecitonal: stream.Send(%v) failed: %v", &reqProto, err)
+		}
+
+	}
+	stream.CloseSend()
+	<-waitc
+	return c.JSON(http.StatusOK, domain.Response{
+		Code:     http.StatusOK,
+		GRPCCode: 0,
+		Data:     villagerList,
+	})
+
 }
